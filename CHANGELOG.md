@@ -4,6 +4,9 @@ User-facing history of the `honor-fmbp` packages for CachyOS / Arch.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+Versions before 1.0.5-4 were developed and tested before this repository was published, so
+they have no tags or release pages of their own.
+
 ## [1.0.5-4] — 2026-10-07
 
 Findings from three months of real use and the first big update (kernel 7.1 → 7.2.9).
@@ -35,7 +38,7 @@ Findings from three months of real use and the first big update (kernel 7.1 → 
 
 DSDT override, both DKMS modules, touchpad + touchscreen, HDR and Secure Boot all came up unchanged.
 
-## [1.0.5-3] — 2026-07-14
+## 1.0.5-3 — 2026-07-14
 
 Fixes from a fresh-eyes review (two independent walkthroughs of the repo as a stranger).
 
@@ -77,7 +80,7 @@ Fixes from a fresh-eyes review (two independent walkthroughs of the repo as a st
   `squashfs-tools` instead of silently shipping a degraded ISO, and its repack failure is no
   longer silenced. `SHA256SUMS` added for the prebuilt packages.
 
-## [1.0.5-2] — 2026-07-13
+## 1.0.5-2 — 2026-07-13
 
 Packaging fixes found by the first real internal-NVMe install. **If you installed 1.0.5-1, upgrade —
 your initramfs cannot currently be rebuilt.**
@@ -103,7 +106,7 @@ your initramfs cannot currently be rebuilt.**
   enrolled. It carries a Microsoft-signed shim, so the ISO boots with **Secure Boot ON** (verified) —
   which means you never touch the BIOS toggle, and your keys survive.
 
-## [1.0.5] — 2026-07-12
+## 1.0.5 — 2026-07-12
 
 First CachyOS release. Ports the Ubuntu enablement (which is at the same version) to
 CachyOS/Arch, sharing the same payload — the DKMS sources, udev rules and corrected DSDT are
@@ -202,6 +205,3 @@ See [runbook §3.2](docs/install-runbook.md#32-the-limine-config-checksum--it-de
   the PAM workaround for it breaks KWallet.
 
 [1.0.5-4]: https://github.com/drphilth/honor-magicbook-pro-14-cachy/releases/tag/v1.0.5-4
-[1.0.5-3]: https://github.com/drphilth/honor-magicbook-pro-14-cachy/releases/tag/v1.0.5-3
-[1.0.5-2]: https://github.com/drphilth/honor-magicbook-pro-14-cachy/releases/tag/v1.0.5-2
-[1.0.5]: https://github.com/drphilth/honor-magicbook-pro-14-cachy/releases/tag/v1.0.5
