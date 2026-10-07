@@ -13,6 +13,11 @@ Findings from three months of real use and the first big update (kernel 7.1 → 
 
 ### Fixed
 
+- **Fingerprint could intermittently stop working until fprintd was restarted.** The bundled
+  `honor-fmbp-libfprint-sdcp` is now `1.94.10+sdcpv2-2` (swapped into this release the same day).
+  About 1 sensor open in 256 hung fprintd with the device stuck "already claimed", and a verify
+  that timed out left the driver in a bad state for the next close. See
+  [honor-fmbp-libfprint-sdcp#1](https://github.com/drphilth/honor-fmbp-libfprint-sdcp/issues/1).
 - **`dkms.conf` no longer uses the deprecated `CLEAN` directive.** dkms 3.4 prints
   `Deprecated feature: CLEAN` for every kernel on every update. It was a no-op anyway: dkms builds
   in a fresh copy of the source each time.
