@@ -1,0 +1,100 @@
+#!/bin/sh
+# honor-fmbp-dsdt-update — select the DSDT variant for this machine's BIOS SKU and
+# (re)build the early-ACPI override cpio on the ESP as acpi_override.img.
+#
+# Arch/CachyOS counterpart of the Debian initramfs-tools hook / dracut drop-in.
+# Here the override is NOT baked into the initramfs: limine-entry-tool turns the
+#   KERNEL_CMDLINE[default]+="initrd=/acpi_override.img"
+# drop-in (/etc/limine-entry-tool.d/10-honor-fmbp-dsdt.conf) into a Limine
+# module_path placed BEFORE the main initramfs, so the kernel's
+# acpi_table_upgrade() consumes it before it ever parses the firmware DSDT.
+# limine-snapper-sync additionally content-addresses a copy into limine_history/,
+# so snapshot/rollback entries keep the DSDT they were created with.
+#
+# Why: the stock FMB-P DSDT aborts at load (NFC0/GNUM) -> the touchpad and touchscreen
+# nodes are never created. NOT boot-critical: storage survives the abort (measured on
+# kernel 7.1.3) — without this the machine boots fine, just with no built-in input.
+#
+# The SKU is fixed hardware, so it is resolved ONCE here (at install, or when
+# re-run by hand) rather than re-detected on every kernel update.
+set -e
+
+SHARE=/usr/share/honor-fmbp
+CANON="$SHARE/dsdt.aml"
+FORCE=/etc/honor-fmbp/dsdt-force
+TABLE=/sys/firmware/acpi/tables/DSDT
+
+log() { echo "honor-fmbp-dsdt: $*" >&2; }
+
+# The global and Chinese BIOSes carry identical DSDT logic but different GNVS NVS
+# base addresses (0x67E09018 vs 0x67E19018); applying the wrong variant would drive
+# the ACPI override at the wrong memory. In AML those are DWordConsts — match the
+# raw bytes via od + fixed-string grep (locale-independent, coreutils-only).
+# Do NOT use grep -P '\xNN': under a UTF-8 locale that matches codepoints, not bytes.
+detect_sku() {
+    [ -r "$TABLE" ] || return 1
+    if od -An -v -tx1 "$TABLE" | tr -s ' \n' ' ' | grep -q '0c 18 90 e0 67'; then
+        echo global; return 0
+    fi
+    if od -An -v -tx1 "$TABLE" | tr -s ' \n' ' ' | grep -q '0c 18 90 e1 67'; then
+        echo chinese; return 0
+    fi
+    return 1
+}
+
+# Locate the ESP. Prefer limine-entry-tool's own setting so we never disagree with it.
+find_esp() {
+    if [ -r /etc/default/limine ]; then
+        esp=$(sed -n 's/^[[:space:]]*ESP_PATH=["'"'"']\{0,1\}\([^"'"'"']*\).*/\1/p' /etc/default/limine | tail -1)
+        [ -n "$esp" ] && [ -d "$esp" ] && { echo "$esp"; return 0; }
+    fi
+    for esp in /boot /efi /boot/efi; do
+        [ -d "$esp/EFI" ] && { echo "$esp"; return 0; }
+    done
+    return 1
+}
+
+sku=""
+if [ -e "$FORCE" ]; then
+    sku=$(tr -d '[:space:]' < "$FORCE" 2>/dev/null || true)
+    case "$sku" in
+        global|chinese) log "SKU forced to '$sku' via $FORCE" ;;
+        "")             sku=global; log "empty $FORCE -> forcing global DSDT" ;;
+        *)              log "unrecognised '$sku' in $FORCE -> forcing global DSDT"; sku=global ;;
+    esac
+else
+    vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)
+    product=$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)
+    if [ "$vendor" = "HONOR" ] && [ "$product" = "FMB-P" ]; then
+        if sku=$(detect_sku); then
+            log "detected $sku SKU from firmware DSDT"
+        else
+            sku=global
+            log "could not read/decode the firmware DSDT -> defaulting to global."
+            log "If this is a Chinese-SKU unit: echo chinese | sudo tee $FORCE; sudo honor-fmbp-dsdt-update"
+        fi
+    else
+        log "not an HONOR FMB-P (DMI: ${vendor:-?}/${product:-?}) -> no DSDT override applied"
+        log "(create $FORCE to force a selection for image builds on other hardware)"
+    fi
+fi
+
+if [ -z "$sku" ]; then
+    rm -f "$CANON"
+    exit 0
+fi
+
+[ -e "$SHARE/dsdt.$sku.aml" ] || { log "ERROR: $SHARE/dsdt.$sku.aml missing — package broken"; exit 1; }
+ln -sf "dsdt.$sku.aml" "$CANON"
+
+esp=$(find_esp) || { log "ERROR: no ESP found (looked at ESP_PATH, /boot, /efi, /boot/efi)"; exit 1; }
+
+# The kernel's ACPI table upgrade only reads an UNCOMPRESSED cpio whose member path
+# is exactly kernel/firmware/acpi/<table>.aml. Build it fresh each time.
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+mkdir -p "$tmp/kernel/firmware/acpi"
+cp -L "$CANON" "$tmp/kernel/firmware/acpi/dsdt.aml"
+( cd "$tmp" && find kernel | LC_ALL=C sort | cpio -o -H newc -R 0:0 --quiet ) > "$tmp/acpi_override.img"
+install -Dm644 "$tmp/acpi_override.img" "$esp/acpi_override.img"
+log "installed $sku DSDT override -> $esp/acpi_override.img"

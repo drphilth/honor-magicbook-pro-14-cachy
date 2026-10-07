@@ -1,0 +1,50 @@
+_apply() {
+    if ! /usr/bin/honor-fmbp-dsdt-update; then
+        cat <<'EOF'
+>>> honor-fmbp-dsdt: FAILED to write the DSDT override to the ESP.
+>>> Without it the touchpad and touchscreen will not work (the system still boots —
+>>> storage is unaffected by the DSDT abort). Fix with:
+>>>     sudo honor-fmbp-dsdt-update && sudo limine-update
+EOF
+        return 1
+    fi
+    # Regenerate limine.conf so the module_path (and its BLAKE2 hash) pick up the image
+    # we just wrote. Harmless if Limine is not the bootloader.
+    if command -v limine-update >/dev/null 2>&1; then
+        limine-update >/dev/null || echo ">>> honor-fmbp-dsdt: limine-update failed — run it by hand before rebooting."
+    fi
+}
+
+post_install() {
+    _apply
+    cat <<'EOF'
+>>> honor-fmbp-dsdt installed.
+>>>
+>>> Verify BEFORE relying on it (after the next reboot):
+>>>   sudo dmesg | grep -iE 'Table Upgrade|GINF|AE_AML'
+>>> Expect "ACPI: Table Upgrade: override [DSDT- HONOR- ARL]", OEM revision 3,
+>>> and ZERO GINF/AE_AML errors. The touchpad is the visible proof.
+EOF
+}
+
+post_upgrade() {
+    _apply
+}
+
+post_remove() {
+    # The drop-in is gone by now, so limine.conf regenerates WITHOUT the module_path.
+    # Do that first, then drop the image — otherwise limine.conf would reference a file
+    # that no longer exists.
+    if command -v limine-update >/dev/null 2>&1; then
+        limine-update >/dev/null || true
+    fi
+    for esp in /boot /efi /boot/efi; do
+        [ -f "$esp/acpi_override.img" ] && rm -f "$esp/acpi_override.img"
+    done
+    cat <<'EOF'
+>>> honor-fmbp-dsdt REMOVED — the corrected DSDT is no longer applied.
+>>> The stock firmware DSDT aborts at load, so the TOUCHPAD and TOUCHSCREEN will stop
+>>> working after the next reboot. The system still boots normally: storage is not
+>>> affected by the abort.
+EOF
+}

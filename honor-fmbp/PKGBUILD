@@ -1,0 +1,134 @@
+# Maintainer: Philip Walsh <packages@drphilth.com>
+#
+# HONOR MagicBook Pro 14 2025 (FMB-P) — Arch/CachyOS enablement.
+# Arch counterpart of the Debian source package (one source -> many binaries).
+# The payload (dkms/ config/ dsdt/ bin/ modules-load.d/) is shared verbatim with the
+# Debian packaging; only this layer differs. (The DKMS sources live in dkms/, NOT src/ —
+# src/ is makepkg's own $srcdir, and `makepkg -C`/`-c` deletes it.)
+#
+# NOTE: prototype. Sources are taken in-tree from $startdir; the AUR release will
+# switch source=() to a git tag of the public CachyOS repo.
+
+pkgbase=honor-fmbp
+pkgname=(
+  honor-fmbp-dsdt
+  honor-fmbp-hwmon-dkms
+  honor-fmbp-kbdlight-dkms
+  honor-fmbp-config
+  honor-fmbp-hdr
+  honor-magicbook-pro-14
+)
+pkgver=1.0.5
+pkgrel=4
+arch=('any')
+url='https://github.com/drphilth/honor-magicbook-pro-14-cachy'
+license=('GPL-2.0-only')
+source=()
+sha256sums=()
+
+_hwmon_ver=1.0
+_kbdlight_ver=1.1
+
+package_honor-fmbp-dsdt() {
+  pkgdesc='HONOR MagicBook Pro 14 (FMB-P) corrected ACPI DSDT — restores touchpad + touchscreen'
+  depends=('cpio' 'coreutils')
+  optdepends=('limine: bootloader that loads the override as an early module')
+  install=honor-fmbp-dsdt.install
+  backup=()
+
+  # Both SKU variants ship; honor-fmbp-dsdt-update picks one at install time by matching
+  # the live firmware DSDT's GNVS base, and never re-detects afterwards (fixed hardware).
+  install -Dm644 "$startdir/dsdt/dsdt.global.aml"  "$pkgdir/usr/share/honor-fmbp/dsdt.global.aml"
+  install -Dm644 "$startdir/dsdt/dsdt.chinese.aml" "$pkgdir/usr/share/honor-fmbp/dsdt.chinese.aml"
+  install -Dm755 "$startdir/bin/honor-fmbp-dsdt-update" "$pkgdir/usr/bin/honor-fmbp-dsdt-update"
+  install -Dm644 "$startdir/limine/10-honor-fmbp-dsdt.conf" \
+                 "$pkgdir/etc/limine-entry-tool.d/10-honor-fmbp-dsdt.conf"
+  install -Dm644 "$startdir/hooks/75-honor-fmbp-dsdt.hook" \
+                 "$pkgdir/usr/share/libalpm/hooks/75-honor-fmbp-dsdt.hook"
+}
+
+package_honor-fmbp-hwmon-dkms() {
+  pkgdesc='HONOR MagicBook Pro 14 (FMB-P) fan tachometer hwmon driver (DKMS)'
+  depends=('dkms')
+  install -dm755 "$pkgdir/usr/src/honor-fmbp-hwmon-${_hwmon_ver}"
+  cp -r "$startdir/dkms/honor-fmbp-hwmon/." "$pkgdir/usr/src/honor-fmbp-hwmon-${_hwmon_ver}/"
+  # The module is DMI-gated and has NO modalias, so nothing autoloads it: ship the
+  # modules-load.d entry or it silently never binds (this was a real Ubuntu bug, 1.0.5).
+  install -Dm644 "$startdir/modules-load.d/honor-fmbp-hwmon.conf" \
+                 "$pkgdir/usr/lib/modules-load.d/honor-fmbp-hwmon.conf"
+}
+
+package_honor-fmbp-kbdlight-dkms() {
+  pkgdesc='HONOR MagicBook Pro 14 (FMB-P) keyboard backlight driver (DKMS)'
+  depends=('dkms')
+  install -dm755 "$pkgdir/usr/src/honor-fmbp-kbdlight-${_kbdlight_ver}"
+  cp -r "$startdir/dkms/honor-fmbp-kbdlight/." "$pkgdir/usr/src/honor-fmbp-kbdlight-${_kbdlight_ver}/"
+  install -Dm644 "$startdir/modules-load.d/honor-fmbp-kbdlight.conf" \
+                 "$pkgdir/usr/lib/modules-load.d/honor-fmbp-kbdlight.conf"
+}
+
+package_honor-fmbp-config() {
+  pkgdesc='HONOR MagicBook Pro 14 (FMB-P) input and device quirks (udev + hwdb)'
+  depends=('systemd')
+  optdepends=('polkit: pkexec fallback for the touchscreen toggle')
+
+  # Inhibits the FTSC1000 touchscreen's bogus second HID collection, which otherwise spams
+  # KEY_MICMUTE ~30/s while the panel is touched; plus the touchscreen toggle permissions
+  # and the hwdb entry silencing the meaningless e078 scancode sent alongside Fn hotkeys.
+  install -Dm644 "$startdir/config/udev/rules.d/99-honor-fmbp-touchscreen.rules" \
+                 "$pkgdir/usr/lib/udev/rules.d/99-honor-fmbp-touchscreen.rules"
+  install -Dm644 "$startdir/config/udev/rules.d/99-honor-fmbp-touchscreen-toggle.rules" \
+                 "$pkgdir/usr/lib/udev/rules.d/99-honor-fmbp-touchscreen-toggle.rules"
+  install -Dm644 "$startdir/config/udev/hwdb.d/61-honor-fmbp-keyboard.hwdb" \
+                 "$pkgdir/usr/lib/udev/hwdb.d/61-honor-fmbp-keyboard.hwdb"
+  install -Dm755 "$startdir/bin/honor-fmbp-touchscreen-toggle" \
+                 "$pkgdir/usr/bin/honor-fmbp-touchscreen-toggle"
+
+  # Deliberately NOT shipped (unlike the Debian package):
+  #  * honor-battery-thresholds.service — the EC PERSISTS charge thresholds across a cold
+  #    power-off (proven on BIOS 1.16), so a restore-at-boot unit is not merely redundant,
+  #    it CLOBBERS any threshold the user picks in the desktop UI. See upstream issue #12.
+  #    Set the preset once instead:
+  #      echo '70 90' | sudo tee /sys/devices/platform/huawei-wmi/charge_control_thresholds
+  #  * the dconf default — that aligns a GNOME extension's presets; Plasma drives
+  #    charge_control_end_threshold natively.
+}
+
+package_honor-fmbp-hdr() {
+  pkgdesc='HONOR MagicBook Pro 14 (FMB-P) corrected EDID — makes the panel HDR visible to KWin'
+  depends=('python')
+  optdepends=('kwin: the compositor this works around')
+  install=honor-fmbp-hdr.install
+
+  # The panel advertises HDR only in a DisplayID 2.0 extension block. mutter parses
+  # DisplayID (HDR works on GNOME); KWin parses only CTA-861 blocks, so it reports the
+  # internal panel as "HDR: incapable" even though the kernel exposes HDR_OUTPUT_METADATA on
+  # eDP-1 and the panel is already at 10 bpc. This re-states the panel's OWN HDR values in a
+  # CTA-861 block too. Not needed on GNOME; harmless there.
+  #
+  # The blob itself is NOT shipped: it is generated from the live panel in the .install
+  # scriptlet, because pushing another unit's EDID at a display is how you get a black screen.
+  install -Dm755 "$startdir/bin/honor-fmbp-hdr-edid" "$pkgdir/usr/bin/honor-fmbp-hdr-edid"
+  install -Dm644 "$startdir/limine/20-honor-fmbp-hdr.conf" \
+                 "$pkgdir/etc/limine-entry-tool.d/20-honor-fmbp-hdr.conf"
+  # i915 probes in early boot, so the EDID must be inside the initramfs — a blob only on the
+  # root filesystem is found too late and the override silently does nothing.
+  install -Dm644 "$startdir/mkinitcpio/honor-fmbp-hdr.conf" \
+                 "$pkgdir/etc/mkinitcpio.conf.d/honor-fmbp-hdr.conf"
+}
+
+package_honor-magicbook-pro-14() {
+  pkgdesc='HONOR MagicBook Pro 14 2025 (FMB-P) CachyOS/Arch enablement (metapackage)'
+  depends=(
+    "honor-fmbp-dsdt=${pkgver}-${pkgrel}"
+    "honor-fmbp-hwmon-dkms=${pkgver}-${pkgrel}"
+    "honor-fmbp-kbdlight-dkms=${pkgver}-${pkgrel}"
+    "honor-fmbp-config=${pkgver}-${pkgrel}"
+    'sof-firmware'   # Intel cAVS/SOF audio firmware this machine's DSP needs
+  )
+  optdepends=(
+    'honor-fmbp-libfprint-sdcp: SDCP fingerprint support for the EgisTec ET171 (1c7a:05aa)'
+    'fprintd: fingerprint enrolment/verification daemon (pair with honor-fmbp-libfprint-sdcp)'
+    'honor-fmbp-hdr: corrected EDID so KWin can see the panel HDR (KDE only; GNOME already works)'
+  )
+}

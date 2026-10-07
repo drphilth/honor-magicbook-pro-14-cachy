@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""build-hdr-edid.py — make the FMB-P's HDR visible to KWin.
+
+The panel DOES advertise HDR, but it does so inside a **DisplayID 2.0 extension block**.
+mutter parses DisplayID, so HDR works on GNOME. **KWin only parses CTA-861 extension
+blocks**, so it never sees the HDR data and reports the output as `HDR: incapable` — even
+though the kernel has HDR_OUTPUT_METADATA fully plumbed on eDP-1 and the panel is already
+running at 10 bpc. This is a compositor limitation, not a driver or hardware one (Ubuntu
+and CachyOS both bind i915 to the same device 8086:7d51).
+
+Fix: append a standalone **CTA-861 extension block** carrying the same HDR Static Metadata
+and Colorimetry data blocks the panel already declares in DisplayID, bump the base EDID's
+extension count, and fix the checksums. KWin then finds the block it is looking for.
+
+We do NOT invent capabilities: every value written here is read back out of the panel's own
+DisplayID block, so the patched EDID claims exactly what the hardware claims.
+
+Usage:
+    ./build-hdr-edid.py [--in /sys/class/drm/card1-eDP-1/edid] [--out honor-fmbp-hdr.bin]
+
+Install (Limine/CachyOS):
+    sudo install -Dm644 honor-fmbp-hdr.bin /usr/lib/firmware/edid/honor-fmbp-hdr.bin
+    # kernel cmdline: drm.edid_firmware=eDP-1:edid/honor-fmbp-hdr.bin
+    # and put the blob in the initramfs (i915 loads early):
+    #   mkinitcpio.conf -> FILES=(/usr/lib/firmware/edid/honor-fmbp-hdr.bin)
+Reverting is just dropping the kernel param.
+"""
+import argparse
+import os
+import sys
+
+EDID_BLOCK = 128
+
+
+def checksum(block: bytes) -> int:
+    """EDID blocks are 128 bytes; the last byte makes the sum ≡ 0 (mod 256)."""
+    return (256 - (sum(block[:127]) % 256)) % 256
+
+
+def build_cta_block(eotf: int, sm: int, max_lum: int, avg_lum: int, min_lum: int,
+                    colorimetry: int) -> bytes:
+    """A CTA-861 extension block whose Data Block Collection holds just what KWin needs.
+
+    Data blocks use a header byte of (tag << 5) | length, where length counts the bytes
+    that follow the header. Tag 7 means "extended", so the first payload byte is the
+    extended tag.
+    """
+    # Colorimetry Data Block: extended tag 0x05, then the colorimetry bitmap + metadata flags.
+    colorimetry_db = bytes([0x05, colorimetry, 0x00])
+    colorimetry_db = bytes([(7 << 5) | len(colorimetry_db)]) + colorimetry_db
+
+    # HDR Static Metadata Data Block: extended tag 0x06, then EOTF / descriptor / luminances.
+    hdr_db = bytes([0x06, eotf, sm, max_lum, avg_lum, min_lum])
+    hdr_db = bytes([(7 << 5) | len(hdr_db)]) + hdr_db
+
+    dbc = colorimetry_db + hdr_db
+    d = 4 + len(dbc)  # where the (empty) DTD area starts
+
+    block = bytearray(EDID_BLOCK)
+    block[0] = 0x02          # CTA-861 extension tag
+    block[1] = 0x03          # revision 3
+    block[2] = d             # offset of the first DTD; the area beyond is zeroed => none
+    block[3] = 0x00          # no native DTDs, no audio/underscan/YCbCr claims
+    block[4:4 + len(dbc)] = dbc
+    block[127] = checksum(bytes(block))
+    return bytes(block)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--in', dest='src', default='/sys/class/drm/card1-eDP-1/edid')
+    ap.add_argument('--out', dest='dst', default='honor-fmbp-hdr.bin')
+    # Defaults are the FMB-P panel's OWN values, as decoded from its DisplayID block:
+    #   EOTF: traditional gamma SDR (bit0) + SMPTE ST2084 (bit2)      -> 0x05
+    #   Static metadata descriptor type 1 (bit0)                      -> 0x01
+    #   Desired content max / frame-avg / min luminance               -> 160 / 122 / 7
+    #   Colorimetry: BT2020RGB (bit7)                                 -> 0x80
+    ap.add_argument('--eotf', type=lambda x: int(x, 0), default=0x05)
+    ap.add_argument('--sm', type=lambda x: int(x, 0), default=0x01)
+    ap.add_argument('--max-lum', type=int, default=160)
+    ap.add_argument('--avg-lum', type=int, default=122)
+    ap.add_argument('--min-lum', type=int, default=7)
+    ap.add_argument('--colorimetry', type=lambda x: int(x, 0), default=0x80)
+    args = ap.parse_args()
+
+    with open(args.src, 'rb') as f:
+        edid = bytearray(f.read())
+
+    if len(edid) < EDID_BLOCK or len(edid) % EDID_BLOCK:
+        print(f'FATAL: {args.src} is {len(edid)} bytes — not a whole number of EDID blocks',
+              file=sys.stderr)
+        return 1
+
+    n_ext = edid[0x7E]
+    if len(edid) != EDID_BLOCK * (1 + n_ext):
+        print(f'FATAL: base EDID claims {n_ext} extension(s) but the blob is {len(edid)} bytes',
+              file=sys.stderr)
+        return 1
+
+    # Refuse to double-patch: if a CTA block is already present, KWin would already see HDR.
+    for i in range(1, 1 + n_ext):
+        if edid[EDID_BLOCK * i] == 0x02:
+            print('FATAL: this EDID already has a CTA-861 extension block — nothing to do.',
+                  file=sys.stderr)
+            return 1
+
+    cta = build_cta_block(args.eotf, args.sm, args.max_lum, args.avg_lum, args.min_lum,
+                          args.colorimetry)
+
+    edid[0x7E] = n_ext + 1               # one more extension block...
+    edid[0x7F] = checksum(bytes(edid[:EDID_BLOCK]))   # ...so the base checksum changes
+    out = bytes(edid) + cta
+
+    # /usr/lib/firmware/edid/ does not exist on a fresh Arch/CachyOS install, and the
+    # packaging hook calls us with output silenced — so failing here left no EDID, and the
+    # mkinitcpio drop-in that FILES+=() it then broke initramfs generation for every kernel.
+    os.makedirs(os.path.dirname(os.path.abspath(args.dst)), exist_ok=True)
+    with open(args.dst, 'wb') as f:
+        f.write(out)
+
+    print(f'in : {args.src}  ({len(edid)} bytes, {n_ext} extension block(s))')
+    print(f'out: {args.dst}  ({len(out)} bytes, {n_ext + 1} extension block(s))')
+    print(f'     appended CTA-861 block: EOTF=0x{args.eotf:02x} SM=0x{args.sm:02x} '
+          f'lum={args.max_lum}/{args.avg_lum}/{args.min_lum} colorimetry=0x{args.colorimetry:02x}')
+    print('verify: edid-decode < ' + args.dst)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

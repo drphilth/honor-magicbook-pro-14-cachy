@@ -1,0 +1,30 @@
+# Re-assert the HONOR FMB-P DSDT override on the ESP.
+#
+# acpi_override.img is static (it depends only on the shipped AML, not on the kernel), so
+# it normally only needs writing when honor-fmbp-dsdt itself is installed/upgraded — which
+# the .install scriptlet handles. This hook is the defensive half: if a kernel or Limine
+# update regenerates limine.conf while the image is missing from the ESP (e.g. the ESP was
+# reformatted, or Limine was reinstalled), the generated module_path would point at a file
+# that isn't there and, with ENABLE_VERIFICATION=yes, there would be nothing to hash.
+#
+# Numbered 75 so it runs before 80-limine-efi-deploy and 90-mkinitcpio-install (which is
+# what drives limine-update), guaranteeing the image exists before limine.conf is rewritten.
+
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/modules/*/vmlinuz
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = limine
+Target = limine-mkinitcpio-hook
+Target = limine-mkinitcpio-hook-git
+
+[Action]
+Description = Ensuring the HONOR FMB-P corrected DSDT is present on the ESP...
+When = PostTransaction
+Exec = /usr/bin/honor-fmbp-dsdt-update

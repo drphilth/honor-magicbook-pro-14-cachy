@@ -1,0 +1,21 @@
+# makepkg build artifacts (src/ is makepkg's $srcdir — our payload lives in dkms/)
+honor-fmbp/pkg/
+honor-fmbp/src/
+*.log
+
+# NOTE: the built *.pkg.tar.zst ARE tracked at the repo root, mirroring how the -ubuntu
+# repo ships its .debs — so a user can install without a toolchain.
+
+# Raw ACPI dumps: acpidump -b emits the MSDM table = the machine's Windows OEM
+# product key. NEVER commit raw dumps, from any machine.
+dsdt/original/
+MSDM*
+msdm*
+
+# denis-bb's reference disassembly (clone it yourself; see dsdt/README.md)
+dsdt/reference/
+
+# Built packages are tracked ONLY at the repo root — not the makepkg output dir
+honor-fmbp/*.pkg.tar.zst
+__pycache__/
+*.pyc
