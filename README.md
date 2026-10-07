@@ -98,11 +98,24 @@ Full step-by-step: **[`docs/install-runbook.md`](docs/install-runbook.md)**. In 
 
 ### Existing install
 
-Already running CachyOS on this machine (e.g. on a USB disk, which *does* boot without the DSDT)?
+Already running CachyOS on this machine? It boots fine without any of this — you just have no
+touchpad or touchscreen until the packages are in. Either install the prebuilt packages from the
+[latest release](https://github.com/drphilth/honor-magicbook-pro-14-cachy/releases/latest):
+
+```sh
+# in the directory you downloaded the release assets to
+sha256sum -c SHA256SUMS
+sudo pacman -U ./*.pkg.tar.zst
+```
+
+or build them from a clone of this repo:
 
 ```sh
 cd honor-fmbp && makepkg -si
 ```
+
+Then reboot. **AUR:** `paru -S honor-magicbook-pro-14` will be the easy route for installing and
+updating, but new AUR account registration is currently paused, so the packages are not there yet.
 
 ## Packages
 
@@ -259,6 +272,7 @@ Not needed on GNOME, where HDR already works.
 ```
 honor-fmbp/     the pacman packaging: one split PKGBUILD -> six packages, plus the payload
                 (DKMS sources, udev rules, DSDT variants, helper scripts)
+aur/            the AUR PKGBUILD, generated from honor-fmbp/PKGBUILD by aur/regenerate.sh
 dsdt/           the DSDT pipeline: build.sh (extract -> fix -> compile) + the corrected tables
 iso/            remaster-cachyos-iso.sh (builds the DSDT-carrying installer ISO) and
                 honor-fmbp-install-cachy.sh (run from the live session before the first reboot)

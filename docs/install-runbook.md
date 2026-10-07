@@ -425,6 +425,14 @@ They are already on the installer stick, so this works offline too:
 sudo pacman -U /run/media/*/*/honor-fmbp/*.pkg.tar.zst    # from the installer stick
 ```
 
+or download the same packages from the
+[latest release](https://github.com/drphilth/honor-magicbook-pro-14-cachy/releases/latest):
+
+```sh
+sha256sum -c SHA256SUMS                 # in the directory holding the downloaded assets
+sudo pacman -U ./*.pkg.tar.zst
+```
+
 or rebuild from the repo:
 
 ```sh

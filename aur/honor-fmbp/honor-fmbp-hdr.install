@@ -1,0 +1,83 @@
+_build_edid() {
+    # Generate the corrected EDID from THIS panel, at install time — do not ship a prebuilt
+    # blob. Panels can differ between units, and feeding the kernel another unit's EDID is a
+    # good way to get a black screen. Same principle as the DSDT SKU picker: resolve the
+    # hardware constant once, on the actual hardware.
+    local edid out tmp
+    out=/usr/lib/firmware/edid/honor-fmbp-hdr.bin
+
+    # This directory does NOT exist on a fresh Arch/CachyOS install. Without it the generator
+    # dies with FileNotFoundError, leaves no blob, and the mkinitcpio drop-in that FILES+=() it
+    # then breaks initramfs generation for EVERY kernel. Found the hard way on a clean install.
+    install -d -m755 "$(dirname "$out")" || return 1
+
+    for edid in /sys/class/drm/card*-eDP-1/edid; do
+        # NB: sysfs BINARY attributes report st_size == 0, so `[ -s "$edid" ]` is ALWAYS false
+        # here even though reading the file yields a full EDID. Read it out first, then test.
+        tmp=$(mktemp) || return 1
+        cat "$edid" > "$tmp" 2>/dev/null
+        if [ ! -s "$tmp" ]; then rm -f "$tmp"; continue; fi
+
+        # Idempotency: once our override is active, sysfs reports the ALREADY-PATCHED EDID, so
+        # a rebuild would (rightly) refuse as a double-patch and leave no blob — silently
+        # killing HDR on the next boot. In that state the live EDID *is* the blob we want.
+        if grep -q 'drm\.edid_firmware=.*honor-fmbp-hdr\.bin' /proc/cmdline 2>/dev/null; then
+            install -Dm644 "$tmp" "$out"
+            rm -f "$tmp"
+            echo ">>> honor-fmbp-hdr: override already active — re-materialised $out"
+            return 0
+        fi
+
+        # Do NOT silence this. Swallowing its stderr is what hid the bug above.
+        if /usr/bin/honor-fmbp-hdr-edid --in "$tmp" --out "$out"; then
+            rm -f "$tmp"
+            echo ">>> honor-fmbp-hdr: built $out from $edid"
+            return 0
+        fi
+        rm -f "$tmp"
+    done
+    cat <<'EOF'
+>>> honor-fmbp-hdr: could not build the corrected EDID from this panel.
+>>> (Not an FMB-P, no eDP-1, or the EDID already carries a CTA-861 block.)
+>>> Nothing was applied — HDR is simply left as-is. This is not fatal.
+EOF
+    return 1
+}
+
+_regen() {
+    command -v mkinitcpio    >/dev/null 2>&1 && mkinitcpio -P   >/dev/null 2>&1 || true
+    command -v limine-update >/dev/null 2>&1 && limine-update    >/dev/null 2>&1 || true
+}
+
+post_install() {
+    if _build_edid; then
+        _regen
+        cat <<'EOF'
+>>> honor-fmbp-hdr installed.
+>>>
+>>> Why this exists: the panel DOES advertise HDR, but only inside a DisplayID 2.0
+>>> extension block. mutter parses DisplayID (so HDR works on GNOME); KWin only parses
+>>> CTA-861 blocks, so it reported the panel as "HDR: incapable" despite the kernel having
+>>> HDR_OUTPUT_METADATA fully plumbed on eDP-1. This ships the panel's OWN HDR values back
+>>> to it in a CTA-861 block as well. Nothing is invented.
+>>>
+>>> After rebooting:
+>>>   kscreen-doctor -o | grep HDR         # expect "disabled", not "incapable"
+>>> then enable HDR in System Settings -> Display & Monitor.
+>>>
+>>> To revert: remove this package (or delete the drm.edid_firmware= token at the Limine
+>>> menu with 'e' for a one-off boot).
+EOF
+    fi
+}
+
+post_upgrade() {
+    _build_edid && _regen
+}
+
+post_remove() {
+    rm -f /usr/lib/firmware/edid/honor-fmbp-hdr.bin
+    _regen
+    echo ">>> honor-fmbp-hdr removed — the panel reverts to its stock EDID and KWin will"
+    echo ">>> report HDR as incapable again. Nothing else is affected."
+}

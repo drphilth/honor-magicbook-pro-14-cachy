@@ -1,13 +1,9 @@
 # Maintainer: Philip Walsh <packages@drphilth.com>
 #
 # HONOR MagicBook Pro 14 2025 (FMB-P) — Arch/CachyOS enablement.
-# Arch counterpart of the Debian source package (one source -> many binaries).
-# The payload (dkms/ config/ dsdt/ bin/ modules-load.d/) is shared verbatim with the
-# Debian packaging; only this layer differs. (The DKMS sources live in dkms/, NOT src/ —
-# src/ is makepkg's own $srcdir, and `makepkg -C`/`-c` deletes it.)
-#
-# NOTE: prototype. Sources are taken in-tree from $startdir; the AUR release will
-# switch source=() to a git tag of the public CachyOS repo.
+# AUR build of https://github.com/drphilth/honor-magicbook-pro-14-cachy — generated from that
+# repo's honor-fmbp/PKGBUILD (which builds in-tree) by aur/regenerate.sh, which switches the
+# payload to a pinned release tarball. Edit the in-repo PKGBUILD, not this one.
 
 pkgbase=honor-fmbp
 pkgname=(
@@ -23,8 +19,10 @@ pkgrel=4
 arch=('any')
 url='https://github.com/drphilth/honor-magicbook-pro-14-cachy'
 license=('GPL-2.0-only')
-source=()
-sha256sums=()
+_tag="${pkgver}-${pkgrel}"
+_srcname="honor-magicbook-pro-14-cachy-${_tag}"
+source=("$pkgbase-$_tag.tar.gz::$url/archive/refs/tags/v$_tag.tar.gz")
+sha256sums=('fe8bbe07e38ffd1d85cc671d3974962a19ae03a67a24922b290011a7f6e9c5d2')
 
 _hwmon_ver=1.0
 _kbdlight_ver=1.1
@@ -37,12 +35,12 @@ package_honor-fmbp-dsdt() {
 
   # Both SKU variants ship; honor-fmbp-dsdt-update picks one at install time by matching
   # the live firmware DSDT's GNVS base, and never re-detects afterwards (fixed hardware).
-  install -Dm644 "$startdir/dsdt/dsdt.global.aml"  "$pkgdir/usr/share/honor-fmbp/dsdt.global.aml"
-  install -Dm644 "$startdir/dsdt/dsdt.chinese.aml" "$pkgdir/usr/share/honor-fmbp/dsdt.chinese.aml"
-  install -Dm755 "$startdir/bin/honor-fmbp-dsdt-update" "$pkgdir/usr/bin/honor-fmbp-dsdt-update"
-  install -Dm644 "$startdir/limine/10-honor-fmbp-dsdt.conf" \
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/dsdt/dsdt.global.aml"  "$pkgdir/usr/share/honor-fmbp/dsdt.global.aml"
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/dsdt/dsdt.chinese.aml" "$pkgdir/usr/share/honor-fmbp/dsdt.chinese.aml"
+  install -Dm755 "$srcdir/$_srcname/honor-fmbp/bin/honor-fmbp-dsdt-update" "$pkgdir/usr/bin/honor-fmbp-dsdt-update"
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/limine/10-honor-fmbp-dsdt.conf" \
                  "$pkgdir/etc/limine-entry-tool.d/10-honor-fmbp-dsdt.conf"
-  install -Dm644 "$startdir/hooks/75-honor-fmbp-dsdt.hook" \
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/hooks/75-honor-fmbp-dsdt.hook" \
                  "$pkgdir/usr/share/libalpm/hooks/75-honor-fmbp-dsdt.hook"
 }
 
@@ -50,10 +48,10 @@ package_honor-fmbp-hwmon-dkms() {
   pkgdesc='HONOR MagicBook Pro 14 (FMB-P) fan tachometer hwmon driver (DKMS)'
   depends=('dkms')
   install -dm755 "$pkgdir/usr/src/honor-fmbp-hwmon-${_hwmon_ver}"
-  cp -r "$startdir/dkms/honor-fmbp-hwmon/." "$pkgdir/usr/src/honor-fmbp-hwmon-${_hwmon_ver}/"
+  cp -r "$srcdir/$_srcname/honor-fmbp/dkms/honor-fmbp-hwmon/." "$pkgdir/usr/src/honor-fmbp-hwmon-${_hwmon_ver}/"
   # The module is DMI-gated and has NO modalias, so nothing autoloads it: ship the
   # modules-load.d entry or it silently never binds (this was a real Ubuntu bug, 1.0.5).
-  install -Dm644 "$startdir/modules-load.d/honor-fmbp-hwmon.conf" \
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/modules-load.d/honor-fmbp-hwmon.conf" \
                  "$pkgdir/usr/lib/modules-load.d/honor-fmbp-hwmon.conf"
 }
 
@@ -61,8 +59,8 @@ package_honor-fmbp-kbdlight-dkms() {
   pkgdesc='HONOR MagicBook Pro 14 (FMB-P) keyboard backlight driver (DKMS)'
   depends=('dkms')
   install -dm755 "$pkgdir/usr/src/honor-fmbp-kbdlight-${_kbdlight_ver}"
-  cp -r "$startdir/dkms/honor-fmbp-kbdlight/." "$pkgdir/usr/src/honor-fmbp-kbdlight-${_kbdlight_ver}/"
-  install -Dm644 "$startdir/modules-load.d/honor-fmbp-kbdlight.conf" \
+  cp -r "$srcdir/$_srcname/honor-fmbp/dkms/honor-fmbp-kbdlight/." "$pkgdir/usr/src/honor-fmbp-kbdlight-${_kbdlight_ver}/"
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/modules-load.d/honor-fmbp-kbdlight.conf" \
                  "$pkgdir/usr/lib/modules-load.d/honor-fmbp-kbdlight.conf"
 }
 
@@ -74,13 +72,13 @@ package_honor-fmbp-config() {
   # Inhibits the FTSC1000 touchscreen's bogus second HID collection, which otherwise spams
   # KEY_MICMUTE ~30/s while the panel is touched; plus the touchscreen toggle permissions
   # and the hwdb entry silencing the meaningless e078 scancode sent alongside Fn hotkeys.
-  install -Dm644 "$startdir/config/udev/rules.d/99-honor-fmbp-touchscreen.rules" \
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/config/udev/rules.d/99-honor-fmbp-touchscreen.rules" \
                  "$pkgdir/usr/lib/udev/rules.d/99-honor-fmbp-touchscreen.rules"
-  install -Dm644 "$startdir/config/udev/rules.d/99-honor-fmbp-touchscreen-toggle.rules" \
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/config/udev/rules.d/99-honor-fmbp-touchscreen-toggle.rules" \
                  "$pkgdir/usr/lib/udev/rules.d/99-honor-fmbp-touchscreen-toggle.rules"
-  install -Dm644 "$startdir/config/udev/hwdb.d/61-honor-fmbp-keyboard.hwdb" \
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/config/udev/hwdb.d/61-honor-fmbp-keyboard.hwdb" \
                  "$pkgdir/usr/lib/udev/hwdb.d/61-honor-fmbp-keyboard.hwdb"
-  install -Dm755 "$startdir/bin/honor-fmbp-touchscreen-toggle" \
+  install -Dm755 "$srcdir/$_srcname/honor-fmbp/bin/honor-fmbp-touchscreen-toggle" \
                  "$pkgdir/usr/bin/honor-fmbp-touchscreen-toggle"
 
   # Deliberately NOT shipped (unlike the Debian package):
@@ -107,12 +105,12 @@ package_honor-fmbp-hdr() {
   #
   # The blob itself is NOT shipped: it is generated from the live panel in the .install
   # scriptlet, because pushing another unit's EDID at a display is how you get a black screen.
-  install -Dm755 "$startdir/bin/honor-fmbp-hdr-edid" "$pkgdir/usr/bin/honor-fmbp-hdr-edid"
-  install -Dm644 "$startdir/limine/20-honor-fmbp-hdr.conf" \
+  install -Dm755 "$srcdir/$_srcname/honor-fmbp/bin/honor-fmbp-hdr-edid" "$pkgdir/usr/bin/honor-fmbp-hdr-edid"
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/limine/20-honor-fmbp-hdr.conf" \
                  "$pkgdir/etc/limine-entry-tool.d/20-honor-fmbp-hdr.conf"
   # i915 probes in early boot, so the EDID must be inside the initramfs — a blob only on the
   # root filesystem is found too late and the override silently does nothing.
-  install -Dm644 "$startdir/mkinitcpio/honor-fmbp-hdr.conf" \
+  install -Dm644 "$srcdir/$_srcname/honor-fmbp/mkinitcpio/honor-fmbp-hdr.conf" \
                  "$pkgdir/etc/mkinitcpio.conf.d/honor-fmbp-hdr.conf"
 }
 

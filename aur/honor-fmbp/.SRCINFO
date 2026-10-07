@@ -1,0 +1,45 @@
+pkgbase = honor-fmbp
+	pkgver = 1.0.5
+	pkgrel = 4
+	url = https://github.com/drphilth/honor-magicbook-pro-14-cachy
+	arch = any
+	license = GPL-2.0-only
+	source = honor-fmbp-1.0.5-4.tar.gz::https://github.com/drphilth/honor-magicbook-pro-14-cachy/archive/refs/tags/v1.0.5-4.tar.gz
+	sha256sums = fe8bbe07e38ffd1d85cc671d3974962a19ae03a67a24922b290011a7f6e9c5d2
+
+pkgname = honor-fmbp-dsdt
+	pkgdesc = HONOR MagicBook Pro 14 (FMB-P) corrected ACPI DSDT — restores touchpad + touchscreen
+	install = honor-fmbp-dsdt.install
+	depends = cpio
+	depends = coreutils
+	optdepends = limine: bootloader that loads the override as an early module
+
+pkgname = honor-fmbp-hwmon-dkms
+	pkgdesc = HONOR MagicBook Pro 14 (FMB-P) fan tachometer hwmon driver (DKMS)
+	depends = dkms
+
+pkgname = honor-fmbp-kbdlight-dkms
+	pkgdesc = HONOR MagicBook Pro 14 (FMB-P) keyboard backlight driver (DKMS)
+	depends = dkms
+
+pkgname = honor-fmbp-config
+	pkgdesc = HONOR MagicBook Pro 14 (FMB-P) input and device quirks (udev + hwdb)
+	depends = systemd
+	optdepends = polkit: pkexec fallback for the touchscreen toggle
+
+pkgname = honor-fmbp-hdr
+	pkgdesc = HONOR MagicBook Pro 14 (FMB-P) corrected EDID — makes the panel HDR visible to KWin
+	install = honor-fmbp-hdr.install
+	depends = python
+	optdepends = kwin: the compositor this works around
+
+pkgname = honor-magicbook-pro-14
+	pkgdesc = HONOR MagicBook Pro 14 2025 (FMB-P) CachyOS/Arch enablement (metapackage)
+	depends = honor-fmbp-dsdt=1.0.5-4
+	depends = honor-fmbp-hwmon-dkms=1.0.5-4
+	depends = honor-fmbp-kbdlight-dkms=1.0.5-4
+	depends = honor-fmbp-config=1.0.5-4
+	depends = sof-firmware
+	optdepends = honor-fmbp-libfprint-sdcp: SDCP fingerprint support for the EgisTec ET171 (1c7a:05aa)
+	optdepends = fprintd: fingerprint enrolment/verification daemon (pair with honor-fmbp-libfprint-sdcp)
+	optdepends = honor-fmbp-hdr: corrected EDID so KWin can see the panel HDR (KDE only; GNOME already works)
